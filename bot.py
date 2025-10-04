@@ -12,6 +12,13 @@ import os
 from flask import Flask
 from threading import Thread
 
+intents = discord.Intents.default()
+intents.message_content = True
+intents.guilds = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 # -------------------------
 # On ready event (sync slash commands)
 # -------------------------
