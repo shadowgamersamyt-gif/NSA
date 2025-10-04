@@ -22,12 +22,16 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # -------------------------
 # On ready event (sync slash commands)
 # -------------------------
+
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     try:
-        synced = await bot.tree.sync()
-        print(f"🔗 Synced {len(synced)} commands")
+        SERVER_IDS = [1381367766535372903, 1415839232672403468]  # <-- your server IDs here
+        for guild_id in SERVER_IDS:
+            guild = discord.Object(id=guild_id)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"🔗 Synced {len(synced)} commands to guild {guild_id}!")
     except Exception as e:
         print(f"⚠️ Sync error: {e}")
 
