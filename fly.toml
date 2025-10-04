@@ -1,19 +1,16 @@
-app = "nsa"  # Your Fly app name
+app = "nsa"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
 
 [build]
-  # If you use Python, Fly uses a standard Python builder automatically
+  # Python builder is automatic
 
 [env]
-  PORT = "8080"  # Flask keep-alive port
+  PORT = "8080"
 
 [experimental]
   auto_rollback = true
-
-[deploy]
-  release_command = ""
 
 [http_service]
   internal_port = 8080
@@ -21,12 +18,8 @@ kill_timeout = 5
   auto_stop_machines = false
   auto_start_machines = true
 
-[deploy]
-  release_command = ""
-  
 [processes]
   web = "python bot.py"
 
-# Optional: specify region (replace 'dfw' with your preferred supported region)
 [region]
   primary = "dfw"
