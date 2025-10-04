@@ -8,6 +8,23 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import json
 import asyncio
+from flask import Flask
+from threading import Thread
+import os
+
+# Flask web server to keep bot alive
+app = Flask("")
+
+@app.route("/")
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+# Start Flask in a separate thread
+t = Thread(target=run)
+t.start()
 
 intents = discord.Intents.default()
 intents.members = True
