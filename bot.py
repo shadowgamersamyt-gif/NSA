@@ -27,16 +27,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     try:
-        SERVER_IDS = [1381367766535372903, 1415839232672403468]  # <-- replace with your server IDs
+        SERVER_IDS = [1381367766535372903, 1415839232672403468]  # your server IDs
         for guild_id in SERVER_IDS:
             guild = discord.Object(id=guild_id)
             await bot.tree.sync(guild=guild)
-            # send a message in a text channel to confirm sync (optional)
-            # pick any channel ID in that guild
-            channel = bot.get_channel(1422378847252254770)  # <-- replace with a text channel ID
-            if channel:
-                await channel.send("✅ Slash commands synced!")
-        print("🔗 Commands synced to all servers!")
+            print(f"🔗 Synced commands to guild {guild_id}!")
     except Exception as e:
         print(f"⚠️ Sync error: {e}")
 
