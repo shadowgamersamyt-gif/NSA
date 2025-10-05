@@ -8,50 +8,12 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import json
 import asyncio
-from flask import Flask
-from threading import Thread
 
-# -------------------------
-# Bot intents
-# -------------------------
 intents = discord.Intents.default()
+intents.members = True
 intents.message_content = True
 intents.guilds = True
-intents.members = True
-
-# -------------------------
-# Bot instance (with command prefix "!" for classic commands)
-# -------------------------
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# -------------------------
-# On ready event (sync slash commands)
-# -------------------------
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    try:
-        for guild_id in GUILD_IDS:
-            guild = discord.Object(id=guild_id)
-            await bot.tree.sync(guild=guild)
-            print(f"🔗 Synced slash commands to guild {guild_id}!")
-        print("✅ All commands synced to all servers!")
-    except Exception as e:
-        print(f"⚠️ Sync error: {e}")
-
-# -------------------------
-# Flask keep-alive server
-# -------------------------
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot is alive!"
-
-def run():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-
-Thread(target=run).start()
+intents.message_content = True
 
 def get_db():
     return psycopg2.connect(os.getenv('DATABASE_URL'))
@@ -434,6 +396,41 @@ def init_db():
         )
     ''')
     
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS role_request_config (
+            guild_id BIGINT PRIMARY KEY,
+            panel_channel_id BIGINT,
+            review_channel_id BIGINT,
+            probationary_private_role_id BIGINT,
+            private_role_id BIGINT,
+            private_agent_role_id BIGINT
+        )
+    ''')
+    
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS role_requests (
+            id SERIAL PRIMARY KEY,
+            guild_id BIGINT,
+            user_id BIGINT,
+            requested_role TEXT,
+            training_officer_id BIGINT,
+            screenshot_url TEXT,
+            status TEXT DEFAULT 'pending',
+            review_message_id BIGINT,
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TIMESTAMP,
+            reviewed_by BIGINT
+        )
+    ''')
+    
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS admin_roles (
+            guild_id BIGINT,
+            role_id BIGINT,
+            PRIMARY KEY (guild_id, role_id)
+        )
+    ''')
+    
     conn.commit()
     cur.close()
     conn.close()
@@ -648,6 +645,307 @@ class ReactionRoleView(View):
         
         return button_callback
 
+async def check_admin_permission(interaction: discord.Interaction) -> bool:
+    """Check if user has admin permissions based on configured admin roles"""
+    if interaction.user.guild_permissions.administrator:
+        return True
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('SELECT role_id FROM admin_roles WHERE guild_id = %s', (interaction.guild.id,))
+    admin_roles = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    user_role_ids = [role.id for role in interaction.user.roles]
+    for admin_role in admin_roles:
+        if admin_role['role_id'] in user_role_ids:
+            return True
+    
+    return False
+
+async def process_role_request_screenshot(request_id: int, screenshot_url: str, guild):
+    """Process a role request with screenshot and send to review channel"""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('''
+        UPDATE role_requests 
+        SET screenshot_url = %s, status = 'pending'
+        WHERE id = %s
+    ''', (screenshot_url, request_id))
+    
+    cur.execute('SELECT * FROM role_requests WHERE id = %s', (request_id,))
+    request = cur.fetchone()
+    
+    cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (guild.id,))
+    config = cur.fetchone()
+    
+    conn.commit()
+    
+    if config and config['review_channel_id'] and request:
+        review_channel = guild.get_channel(config['review_channel_id'])
+        if review_channel:
+            member = guild.get_member(request['user_id'])
+            embed = discord.Embed(
+                title="🎭 New Role Request",
+                description=f"{member.mention if member else 'Unknown User'} has requested a role!",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            embed.add_field(name="Requested Role", value=request['requested_role'], inline=True)
+            embed.add_field(name="Training Officer", value=f"<@{request['training_officer_id']}>", inline=True)
+            embed.add_field(name="User", value=f"{member.mention if member else 'Unknown'} ({request['user_id']})", inline=False)
+            embed.set_image(url=screenshot_url)
+            embed.set_footer(text=f"Request ID: {request_id}")
+            
+            view = RoleRequestReviewView(request_id)
+            review_message = await review_channel.send(embed=embed, view=view)
+            
+            cur.execute('''
+                UPDATE role_requests 
+                SET review_message_id = %s 
+                WHERE id = %s
+            ''', (review_message.id, request_id))
+            conn.commit()
+    
+    cur.close()
+    conn.close()
+
+class RoleRequestReviewView(View):
+    def __init__(self, request_id: int):
+        super().__init__(timeout=None)
+        self.request_id = request_id
+        
+        approve_button = Button(
+            label='Approve',
+            style=discord.ButtonStyle.success,
+            custom_id=f'role_request_approve_{request_id}'
+        )
+        approve_button.callback = self.approve_callback
+        
+        deny_button = Button(
+            label='Deny',
+            style=discord.ButtonStyle.danger,
+            custom_id=f'role_request_deny_{request_id}'
+        )
+        deny_button.callback = self.deny_callback
+        
+        self.add_item(approve_button)
+        self.add_item(deny_button)
+    
+    async def approve_callback(self, interaction: discord.Interaction):
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute('SELECT * FROM role_requests WHERE id = %s', (self.request_id,))
+        request = cur.fetchone()
+        
+        if not request:
+            await interaction.response.send_message('❌ Request not found!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        if request['status'] != 'pending':
+            await interaction.response.send_message('❌ This request has already been reviewed!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (interaction.guild.id,))
+        config = cur.fetchone()
+        
+        if not config:
+            await interaction.response.send_message('❌ Role request system not configured!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        role_mapping = {
+            'Probationary Private': config['probationary_private_role_id'],
+            'Private': config['private_role_id'],
+            'Private Agent': config['private_agent_role_id']
+        }
+        
+        role_id = role_mapping.get(request['requested_role'])
+        if not role_id:
+            await interaction.response.send_message('❌ Role not found in configuration!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        role = interaction.guild.get_role(role_id)
+        if not role:
+            await interaction.response.send_message('❌ Role not found in server!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        member = interaction.guild.get_member(request['user_id'])
+        if not member:
+            await interaction.response.send_message('❌ Member not found!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        await member.add_roles(role)
+        
+        cur.execute('''
+            UPDATE role_requests 
+            SET status = 'approved', reviewed_at = %s, reviewed_by = %s 
+            WHERE id = %s
+        ''', (datetime.now(), interaction.user.id, self.request_id))
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.green()
+        embed.add_field(name="Status", value=f"✅ Approved by {interaction.user.mention}", inline=False)
+        
+        await interaction.message.edit(embed=embed, view=None)
+        await interaction.response.send_message(f'✅ Request approved! {role.mention} role has been given to {member.mention}', ephemeral=True)
+        
+        try:
+            await member.send(f'✅ Your role request for **{request["requested_role"]}** has been approved! You have been given the {role.mention} role.')
+        except:
+            pass
+    
+    async def deny_callback(self, interaction: discord.Interaction):
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute('SELECT * FROM role_requests WHERE id = %s', (self.request_id,))
+        request = cur.fetchone()
+        
+        if not request:
+            await interaction.response.send_message('❌ Request not found!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        if request['status'] != 'pending':
+            await interaction.response.send_message('❌ This request has already been reviewed!', ephemeral=True)
+            cur.close()
+            conn.close()
+            return
+        
+        cur.execute('''
+            UPDATE role_requests 
+            SET status = 'denied', reviewed_at = %s, reviewed_by = %s 
+            WHERE id = %s
+        ''', (datetime.now(), interaction.user.id, self.request_id))
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        member = interaction.guild.get_member(request['user_id'])
+        
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.red()
+        embed.add_field(name="Status", value=f"❌ Denied by {interaction.user.mention}", inline=False)
+        
+        await interaction.message.edit(embed=embed, view=None)
+        await interaction.response.send_message(f'❌ Request denied.', ephemeral=True)
+        
+        if member:
+            try:
+                await member.send(f'❌ Your role request for **{request["requested_role"]}** has been denied.')
+            except:
+                pass
+
+class MemberSelect(discord.ui.Select):
+    def __init__(self, members: list):
+        options = [
+            discord.SelectOption(label=member.display_name[:100], value=str(member.id), description=f"ID: {member.id}")
+            for member in members[:25]
+        ]
+        super().__init__(
+            placeholder="Select your training officer...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="training_officer_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        selected_member_id = int(self.values[0])
+        
+        selected_role = None
+        for item in self.view.children:
+            if isinstance(item, RoleSelect):
+                if hasattr(item, 'selected_value'):
+                    selected_role = item.selected_value
+                    break
+        
+        if not selected_role:
+            await interaction.response.send_message('❌ Please select a role first!', ephemeral=True)
+            return
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            INSERT INTO role_requests (guild_id, user_id, requested_role, training_officer_id, status)
+            VALUES (%s, %s, %s, %s, 'awaiting_screenshot')
+            RETURNING id
+        ''', (interaction.guild.id, interaction.user.id, selected_role, selected_member_id))
+        
+        request_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        training_officer = interaction.guild.get_member(selected_member_id)
+        officer_name = training_officer.display_name if training_officer else "Unknown"
+        
+        await interaction.response.send_message(
+            f'✅ Role request created!\n\n'
+            f'**Selected Role:** {selected_role}\n'
+            f'**Training Officer:** {officer_name}\n\n'
+            f'📸 **Next Step:** Please upload your screenshot as an attachment in your next message in this channel.\n'
+            f'The screenshot will be automatically added to your request.',
+            ephemeral=True
+        )
+
+class RoleSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Probationary Private", value="Probationary Private", emoji="🎖️"),
+            discord.SelectOption(label="Private", value="Private", emoji="🎖️"),
+            discord.SelectOption(label="Private Agent", value="Private Agent", emoji="🎖️")
+        ]
+        super().__init__(
+            placeholder="Select the role you want to request...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="role_select"
+        )
+        self.selected_value = None
+    
+    async def callback(self, interaction: discord.Interaction):
+        self.selected_value = self.values[0]
+        await interaction.response.send_message(f'✅ Selected: **{self.selected_value}**. Now select your training officer from the dropdown below.', ephemeral=True)
+
+class RoleRequestPanelView(View):
+    def __init__(self, guild: discord.Guild):
+        super().__init__(timeout=None)
+        self.guild = guild
+        
+        role_select = RoleSelect()
+        self.add_item(role_select)
+        
+        members = [m for m in guild.members if not m.bot]
+        if members:
+            member_select = MemberSelect(members)
+            self.add_item(member_select)
+
 class RoleBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='/', intents=intents)
@@ -815,6 +1113,66 @@ async def on_reaction_remove(reaction, user):
     else:
         cur.close()
         conn.close()
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    
+    if not message.guild:
+        return
+    
+    if not message.attachments:
+        return
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('''
+        SELECT * FROM role_requests 
+        WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_screenshot'
+        ORDER BY requested_at DESC
+        LIMIT 1
+    ''', (message.guild.id, message.author.id))
+    
+    pending_request = cur.fetchone()
+    
+    cur.close()
+    conn.close()
+    
+    if pending_request:
+        image_attachment = None
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith('image/'):
+                image_attachment = attachment
+                break
+        
+        if image_attachment:
+            try:
+                await message.add_reaction('✅')
+                await process_role_request_screenshot(pending_request['id'], image_attachment.url, message.guild)
+                
+                try:
+                    await message.author.send(
+                        f'✅ Your role request has been submitted for review!\n\n'
+                        f'**Requested Role:** {pending_request["requested_role"]}\n'
+                        f'**Training Officer:** <@{pending_request["training_officer_id"]}>\n\n'
+                        f'You will be notified when your request is reviewed.'
+                    )
+                except:
+                    await message.channel.send(
+                        f'{message.author.mention} ✅ Your role request has been submitted for review!',
+                        delete_after=10
+                    )
+            except Exception as e:
+                print(f'Error processing screenshot: {e}')
+                await message.add_reaction('❌')
+        else:
+            await message.add_reaction('❌')
+            try:
+                await message.author.send('❌ Please upload an image file (PNG, JPG, etc.) for your role request screenshot.')
+            except:
+                pass
 
 @bot.event
 async def on_member_join(member):
@@ -1145,6 +1503,203 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
         print(f'Unexpected error: {error}')
         if not interaction.response.is_done():
             await interaction.response.send_message(f'❌ An unexpected error occurred!', ephemeral=True)
+
+@bot.tree.command(name="setuprolerequest", description="Configure the role request system")
+@app_commands.describe(
+    panel_channel="Channel where the role request panel will be posted",
+    review_channel="Channel where role requests will be sent for review",
+    probationary_private_role="The Probationary Private role",
+    private_role="The Private role",
+    private_agent_role="The Private Agent role"
+)
+async def setup_role_request(
+    interaction: discord.Interaction,
+    panel_channel: discord.TextChannel,
+    review_channel: discord.TextChannel,
+    probationary_private_role: discord.Role,
+    private_role: discord.Role,
+    private_agent_role: discord.Role
+):
+    if not await check_admin_permission(interaction):
+        await interaction.response.send_message('❌ You do not have permission to use this command!', ephemeral=True)
+        return
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute('''
+        INSERT INTO role_request_config (
+            guild_id, panel_channel_id, review_channel_id,
+            probationary_private_role_id, private_role_id, private_agent_role_id
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (guild_id) DO UPDATE SET
+            panel_channel_id = EXCLUDED.panel_channel_id,
+            review_channel_id = EXCLUDED.review_channel_id,
+            probationary_private_role_id = EXCLUDED.probationary_private_role_id,
+            private_role_id = EXCLUDED.private_role_id,
+            private_agent_role_id = EXCLUDED.private_agent_role_id
+    ''', (
+        interaction.guild.id,
+        panel_channel.id,
+        review_channel.id,
+        probationary_private_role.id,
+        private_role.id,
+        private_agent_role.id
+    ))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    embed = discord.Embed(
+        title="✅ Role Request System Configured",
+        description="The role request system has been set up successfully!",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="Panel Channel", value=panel_channel.mention, inline=True)
+    embed.add_field(name="Review Channel", value=review_channel.mention, inline=True)
+    embed.add_field(name="Probationary Private", value=probationary_private_role.mention, inline=False)
+    embed.add_field(name="Private", value=private_role.mention, inline=False)
+    embed.add_field(name="Private Agent", value=private_agent_role.mention, inline=False)
+    embed.add_field(name="Next Step", value="Use `/createrolepanel` to post the role request panel", inline=False)
+    
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="createrolepanel", description="Create and post the role request panel")
+async def create_role_panel(interaction: discord.Interaction):
+    if not await check_admin_permission(interaction):
+        await interaction.response.send_message('❌ You do not have permission to use this command!', ephemeral=True)
+        return
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (interaction.guild.id,))
+    config = cur.fetchone()
+    
+    cur.close()
+    conn.close()
+    
+    if not config or not config['panel_channel_id']:
+        await interaction.response.send_message('❌ Role request system not configured! Use `/setuprolerequest` first.', ephemeral=True)
+        return
+    
+    panel_channel = interaction.guild.get_channel(config['panel_channel_id'])
+    if not panel_channel:
+        await interaction.response.send_message('❌ Panel channel not found!', ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="🎭 Role Request System",
+        description=(
+            "Welcome to the role request system!\n\n"
+            "**How to request a role:**\n"
+            "1. Select the role you want from the dropdown below\n"
+            "2. Select your training officer from the member list\n"
+            "3. Upload your screenshot as an image attachment in this channel\n"
+            "4. Wait for review and approval\n\n"
+            "**Available Roles:**\n"
+            "🎖️ Probationary Private\n"
+            "🎖️ Private\n"
+            "🎖️ Private Agent"
+        ),
+        color=discord.Color.blue(),
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text="Use the dropdowns below to start your request")
+    
+    view = RoleRequestPanelView(interaction.guild)
+    
+    await panel_channel.send(embed=embed, view=view)
+    await interaction.response.send_message(f'✅ Role request panel posted in {panel_channel.mention}!', ephemeral=True)
+
+@bot.tree.command(name="addadminrole", description="Add a role that can use admin commands")
+@app_commands.describe(role="The role to give admin permissions")
+async def add_admin_role(interaction: discord.Interaction, role: discord.Role):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message('❌ Only server administrators can use this command!', ephemeral=True)
+        return
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute('''
+            INSERT INTO admin_roles (guild_id, role_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+        ''', (interaction.guild.id, role.id))
+        conn.commit()
+        
+        if cur.rowcount > 0:
+            await interaction.response.send_message(f'✅ {role.mention} now has admin permissions for bot commands!', ephemeral=True)
+        else:
+            await interaction.response.send_message(f'⚠️ {role.mention} already has admin permissions!', ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error adding admin role: {str(e)}', ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.tree.command(name="removeadminrole", description="Remove admin permissions from a role")
+@app_commands.describe(role="The role to remove admin permissions from")
+async def remove_admin_role(interaction: discord.Interaction, role: discord.Role):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message('❌ Only server administrators can use this command!', ephemeral=True)
+        return
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute('DELETE FROM admin_roles WHERE guild_id = %s AND role_id = %s', (interaction.guild.id, role.id))
+    conn.commit()
+    
+    if cur.rowcount > 0:
+        await interaction.response.send_message(f'✅ Removed admin permissions from {role.mention}!', ephemeral=True)
+    else:
+        await interaction.response.send_message(f'⚠️ {role.mention} did not have admin permissions!', ephemeral=True)
+    
+    cur.close()
+    conn.close()
+
+@bot.tree.command(name="listadminroles", description="List all roles with admin permissions")
+async def list_admin_roles(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message('❌ Only server administrators can use this command!', ephemeral=True)
+        return
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('SELECT role_id FROM admin_roles WHERE guild_id = %s', (interaction.guild.id,))
+    admin_roles = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    if not admin_roles:
+        await interaction.response.send_message('No admin roles configured. Use `/addadminrole` to add one.', ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="🛡️ Admin Roles",
+        description="Roles with admin permissions for bot commands:",
+        color=discord.Color.blue()
+    )
+    
+    role_mentions = []
+    for admin_role in admin_roles:
+        role = interaction.guild.get_role(admin_role['role_id'])
+        if role:
+            role_mentions.append(role.mention)
+        else:
+            role_mentions.append(f"Deleted Role (ID: {admin_role['role_id']})")
+    
+    embed.add_field(name="Admin Roles", value="\n".join(role_mentions) if role_mentions else "None", inline=False)
+    embed.set_footer(text="Server Administrators always have full access")
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="setbotactivity", description="Set what the bot is playing/watching (Director only)")
 @app_commands.describe(
