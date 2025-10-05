@@ -903,7 +903,7 @@ class RoleRequestReviewView(View):
                 pass
 
 class MemberSelect(discord.ui.Select):
-    def __init__(self, members: list, interaction: discord.Interaction):
+    def __init__(self, members: list, requester: discord.Member):
         allowed_roles = ["Training Officer", "Training Officer In Charge", "Head Training Officer"]
 
         options = []
@@ -912,7 +912,7 @@ class MemberSelect(discord.ui.Select):
         for member in members:
             if member.bot:
                 continue  # skip bots
-            if member == interaction.user:
+            if member == requester:
                 continue  # exclude requester
             if any(role.name in allowed_roles for role in member.roles):
                 options.append(discord.SelectOption(
@@ -924,8 +924,6 @@ class MemberSelect(discord.ui.Select):
                 if count >= 25:  # Discord dropdown limit
                     break
 
-        super().__init__(placeholder="Select a member...", options=options)
-        ]
         super().__init__(
             placeholder="Select your training officer...",
             min_values=1,
