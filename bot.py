@@ -1004,7 +1004,7 @@ class RoleRequestPanelView(View):
         
         members = [m for m in guild.members if not m.bot]
         if members:
-            member_select = MemberSelect(members)
+            member_select = MemberSelect(members, interaction)
             self.add_item(member_select)
 
     
