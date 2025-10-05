@@ -1181,7 +1181,8 @@ async def on_message(message):
             try:
                 await message.add_reaction('✅')
                 await process_role_request_screenshot(pending_request['id'], image_attachment.url, message.guild)
-                
+                await message.delete()
+
                 try:
                     await message.author.send(
                         f'✅ Your role request has been submitted for review!\n\n'
