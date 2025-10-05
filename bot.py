@@ -42,21 +42,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # -------------------------
 # GLOBAL BOT MESSAGE FILTER
 # -------------------------
-# Place this AFTER your bot is created:
-# bot = commands.Bot(command_prefix="!", intents=intents)
-
-# This prevents commands from running if the author is a bot
 @bot.check
 async def ignore_bot_commands(ctx):
+    # Prevent commands from running if the author is a bot
     return not ctx.author.bot
-
-# This prevents raw message events from processing bot messages
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-    # Ensure commands still work
-    await bot.process_commands(message)
 
 # List of your server IDs for instant command sync
 GUILDS = [1381367766535372903, 1415839232672403468]  # <-- replace with your two server IDs
