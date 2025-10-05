@@ -3811,8 +3811,7 @@ async def commands_list(interaction: discord.Interaction):
             "settrainingchannel", "settrainingmessage", "scheduletraining", "sethelperrole"
         ],
         "🎭 Role Request System": [
-            "setuprolerequest", "createrolepanel", "addroleoption",
-            "postrolepanel", "listrolepanels", "deleterolepanel"
+            "setuprolerequest", "createrolepanel"
         ],
         "⚠️ Warnings": [
             "warn", "clearwarnings", "viewwarnings"
