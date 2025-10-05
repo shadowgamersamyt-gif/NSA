@@ -3001,8 +3001,7 @@ async def set_training_message(interaction: discord.Interaction, training_type: 
     training_type=[
         app_commands.Choice(name="Civilian", value="civilian"),
         app_commands.Choice(name="Probationary Private", value="probationary_private"),
-        app_commands.Choice(name="Private", value="private"),
-        app_commands.Choice(name="Private Agent", value="private_agent")
+        app_commands.Choice(name="Private", value="private")
     ],
     time=[
         app_commands.Choice(name="In 15 minutes", value="15 minutes"),
