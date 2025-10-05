@@ -2942,8 +2942,7 @@ async def test_welcome(interaction: discord.Interaction):
 @app_commands.choices(training_type=[
     app_commands.Choice(name="Civilian", value="civilian"),
     app_commands.Choice(name="Probationary Private", value="probationary_private"),
-    app_commands.Choice(name="Private", value="private"),
-    app_commands.Choice(name="Private Agent", value="private_agent")
+    app_commands.Choice(name="Private", value="private")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def set_training_channel(interaction: discord.Interaction, training_type: str, channel: discord.TextChannel):
@@ -2963,6 +2962,7 @@ async def set_training_channel(interaction: discord.Interaction, training_type: 
     training_display = training_type.replace('_', ' ').title()
     await interaction.response.send_message(f'✅ {training_display} training channel set to {channel.mention}!')
 
+
 @bot.tree.command(name="settrainingmessage", description="Set the message template for training notifications")
 @app_commands.describe(
     training_type="Type of training",
@@ -2971,8 +2971,7 @@ async def set_training_channel(interaction: discord.Interaction, training_type: 
 @app_commands.choices(training_type=[
     app_commands.Choice(name="Civilian", value="civilian"),
     app_commands.Choice(name="Probationary Private", value="probationary_private"),
-    app_commands.Choice(name="Private", value="private"),
-    app_commands.Choice(name="Private Agent", value="private_agent")
+    app_commands.Choice(name="Private", value="private")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def set_training_message(interaction: discord.Interaction, training_type: str, message: str):
