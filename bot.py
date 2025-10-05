@@ -1628,6 +1628,16 @@ async def create_role_panel(interaction: discord.Interaction):
     if not await check_admin_permission(interaction):
         await interaction.response.send_message('❌ You do not have permission to use this command!', ephemeral=True)
         return
+    # Get all non-bot members
+    members = [m for m in interaction.guild.members if not m.bot]
+
+    # Create dropdown — interaction exists here
+    member_select = MemberSelect(members, interaction)
+    view = discord.ui.View()
+    view.add_item(member_select)
+
+    # Send the panel with the dropdown
+    await interaction.response.send_message("Select a member for the role request:", view=view)
     
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
