@@ -8,6 +8,32 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import json
 import asyncio
+from flask import Flask
+import threading
+import os
+
+app = Flask("")
+
+@app.route("/")
+def home():
+    return "Bot is alive!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+# Start Flask in a separate thread
+threading.Thread(target=run_flask).start()
+
+# -------------------------
+# DISCORD BOT SETUP
+# -------------------------
+from discord.ext import commands
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
 
 intents = discord.Intents.default()
 intents.members = True
