@@ -183,7 +183,7 @@ async def check_raid_pattern(guild, member):
                     embed.add_field(name="Auto-Response", value="🔒 Initiating automatic lockdown...", inline=False)
         
         cur.close()
-        conn.close() to
+        conn.close() 
         
     except Exception as e:
         print(f'Error checking raid pattern: {e}')
