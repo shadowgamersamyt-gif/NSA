@@ -2950,6 +2950,7 @@ async def test_welcome(interaction: discord.Interaction):
     await channel.send(formatted_message)
     await interaction.response.send_message(f'✅ Test welcome message sent to {channel.mention}!')
 
+# ✅ SET TRAINING CHANNEL
 @bot.tree.command(name="settrainingchannel", description="Set the channel for training notifications")
 @app_commands.describe(
     training_type="Type of training",
@@ -2979,6 +2980,7 @@ async def set_training_channel(interaction: discord.Interaction, training_type: 
     await interaction.response.send_message(f'✅ {training_display} training channel set to {channel.mention}!')
 
 
+# ✅ SET TRAINING MESSAGE
 @bot.tree.command(name="settrainingmessage", description="Set the message template for training notifications")
 @app_commands.describe(
     training_type="Type of training",
@@ -3007,6 +3009,8 @@ async def set_training_message(interaction: discord.Interaction, training_type: 
     training_display = training_type.replace('_', ' ').title()
     await interaction.response.send_message(f'✅ {training_display} training message set!')
 
+
+# ✅ SCHEDULE TRAINING
 @bot.tree.command(name="scheduletraining", description="Send a training notification")
 @app_commands.describe(
     training_type="Type of training",
