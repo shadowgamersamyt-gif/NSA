@@ -25,11 +25,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # -------------------------
-# Replace these with your actual server IDs
-# -------------------------
-GUILD_IDS = [1381367766535372903, 1415839232672403468]  # <-- your server IDs here
-
-# -------------------------
 # On ready event (sync slash commands)
 # -------------------------
 @bot.event
@@ -43,47 +38,6 @@ async def on_ready():
         print("✅ All commands synced to all servers!")
     except Exception as e:
         print(f"⚠️ Sync error: {e}")
-
-# -------------------------
-# /requestrole slash command
-# -------------------------
-@bot.tree.command(
-    name="requestrole",
-    description="Request a role by uploading a screenshot, selecting officer, and role."
-)
-@app_commands.describe(
-    screenshot="Upload your screenshot",
-    officer="Select your Hosting Training Officer",
-    role="Choose your requested role"
-)
-async def requestrole(
-    interaction: discord.Interaction,
-    screenshot: discord.Attachment,
-    officer: discord.Member,
-    role: str
-):
-    allowed_roles = ["Probationary Private", "Private", "Private Agent"]
-
-    if role not in allowed_roles:
-        await interaction.response.send_message(
-            f"❌ Invalid role. Please choose one of: {', '.join(allowed_roles)}",
-            ephemeral=True
-        )
-        return
-
-    embed = discord.Embed(
-        title="Role Request Submitted",
-        description=f"{interaction.user.mention} has requested a role.",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="Requested Role", value=role, inline=False)
-    embed.add_field(name="Hosting Training Officer", value=officer.mention, inline=False)
-    embed.set_footer(text="Review the attached screenshot below.")
-
-    await interaction.response.send_message(
-        embed=embed,
-        file=await screenshot.to_file()
-    )
 
 # -------------------------
 # Flask keep-alive server
