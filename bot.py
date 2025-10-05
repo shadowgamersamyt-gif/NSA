@@ -1626,8 +1626,8 @@ async def create_role_panel(interaction: discord.Interaction):
     # Get all non-bot members
     members = [m for m in interaction.guild.members if not m.bot]
 
-    # Create dropdown — interaction exists here
-    member_select = MemberSelect(members, interaction)
+    # Create dropdown — now using requester instead of interaction
+    member_select = MemberSelect(members, requester=interaction.user)
     view = discord.ui.View()
     view.add_item(member_select)
 
