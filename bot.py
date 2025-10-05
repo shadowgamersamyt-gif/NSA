@@ -11,7 +11,9 @@ import asyncio
 from flask import Flask
 import threading
 import os
-
+# -------------------------
+# FLASK KEEP-ALIVE SETUP
+# -------------------------
 app = Flask("")
 
 @app.route("/")
@@ -25,21 +27,39 @@ def run_flask():
 threading.Thread(target=run_flask).start()
 
 # -------------------------
-# DISCORD BOT SETUP
+# DISCORD INTENTS
 # -------------------------
-from discord.ext import commands
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 intents.guilds = True
-intents.message_content = True
+
+# -------------------------
+# DISCORD BOT SETUP + SLASH COMMANDS
+# -------------------------
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# List of your server IDs for instant command sync
+GUILDS = [1381367766535372903, 1415839232672403468]  # <-- replace with your two server IDs
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    for guild_id in GUILDS:
+        guild = discord.Object(id=guild_id)
+        await bot.tree.sync(guild=guild)
+        print(f"Slash commands synced for guild {guild_id}!")
+
+# -------------------------
+# EXAMPLE SLASH COMMANDS
+# -------------------------
+@bot.tree.command(name="hello", description="Say hello!")
+async def hello(interaction: discord.Interaction):
+    await interaction.response.send_message(f"Hello {interaction.user.mention}!")
+
+@bot.tree.command(name="ping", description="Replies with Pong!")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("Pong!")
 
 def get_db():
     return psycopg2.connect(os.getenv('DATABASE_URL'))
