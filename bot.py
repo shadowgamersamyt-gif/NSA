@@ -904,7 +904,7 @@ class RoleRequestReviewView(View):
 
 class MemberSelect(discord.ui.Select):
     def __init__(self, members: list, requester: discord.Member):
-        allowed_roles = ["Training Officer", "Training Officer In Charge", "Head Training Officer"]
+        allowed_role_ids = [1423052817496674304, 1422375802011389982, 1410404396675895406]
 
         options = []
         count = 0
@@ -914,7 +914,7 @@ class MemberSelect(discord.ui.Select):
                 continue  # skip bots
             if member == requester:
                 continue  # exclude requester
-            if any(role.name in allowed_roles for role in member.roles):
+            if any(role.id in allowed_role_ids for role in member.roles):
                 options.append(discord.SelectOption(
                     label=member.display_name[:100],
                     value=str(member.id),
