@@ -8,30 +8,39 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import json
 import asyncio
-import os
 from flask import Flask
 from threading import Thread
 
+# -------------------------
+# Bot intents
+# -------------------------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
 
+# -------------------------
+# Bot instance (with command prefix "!" for classic commands)
+# -------------------------
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# -------------------------
+# Replace these with your actual server IDs
+# -------------------------
+GUILD_IDS = [1381367766535372903, 1415839232672403468]  # <-- your server IDs here
 
 # -------------------------
 # On ready event (sync slash commands)
 # -------------------------
-
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     try:
-        SERVER_IDS = [1381367766535372903, 1415839232672403468]  # your server IDs
-        for guild_id in SERVER_IDS:
+        for guild_id in GUILD_IDS:
             guild = discord.Object(id=guild_id)
             await bot.tree.sync(guild=guild)
-            print(f"🔗 Synced commands to guild {guild_id}!")
+            print(f"🔗 Synced slash commands to guild {guild_id}!")
+        print("✅ All commands synced to all servers!")
     except Exception as e:
         print(f"⚠️ Sync error: {e}")
 
@@ -56,10 +65,11 @@ async def requestrole(
     allowed_roles = ["Probationary Private", "Private", "Private Agent"]
 
     if role not in allowed_roles:
-        return await interaction.response.send_message(
+        await interaction.response.send_message(
             f"❌ Invalid role. Please choose one of: {', '.join(allowed_roles)}",
             ephemeral=True
         )
+        return
 
     embed = discord.Embed(
         title="Role Request Submitted",
@@ -75,7 +85,9 @@ async def requestrole(
         file=await screenshot.to_file()
     )
 
+# -------------------------
 # Flask keep-alive server
+# -------------------------
 app = Flask(__name__)
 
 @app.route("/")
@@ -85,14 +97,7 @@ def home():
 def run():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
-# Start Flask server in background thread
 Thread(target=run).start()
-
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
-intents.guilds = True
-intents.message_content = True
 
 def get_db():
     return psycopg2.connect(os.getenv('DATABASE_URL'))
