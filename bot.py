@@ -3769,93 +3769,65 @@ async def commands_list(interaction: discord.Interaction):
         color=discord.Color.blue(),
         timestamp=datetime.now()
     )
-    
-    embed.add_field(name="🛡️ **Security System** (Start Here!)", value=(
-        "`/security` - Complete security guide\n"
-        "`/setupguide` - Step-by-step setup\n"
-        "`/securitystatus` - View current settings\n"
-        "`/logevents` - See all trackable events\n"
-        "`/configsecurity` - Configure security features\n"
-        "`/setgloballog` - Set unified log channel\n"
-        "`/disablegloballog` - Disable global logging"
-    ), inline=False)
-    
-    embed.add_field(name="🎖️ **Agent Management**", value=(
-        "`/registeragent` - Register your agent file\n"
-        "`/viewagent` - View an agent file\n"
-        "`/listagents` - List all agents (Admin)\n"
-        "`/deleteagent` - Delete agent file (Admin)"
-    ), inline=False)
-    
-    embed.add_field(name="⚡ **Duty System**", value=(
-        "`/dutyon` - Go on duty\n"
-        "`/dutyoff` - Go off duty\n"
-        "`/dutystatus` - Check duty status\n"
-        "`/dutylist` - List on-duty members (Admin)\n"
-        "`/setdutyrole` - Set duty role (Admin)"
-    ), inline=False)
-    
-    embed.add_field(name="📊 **Polls & Voting**", value=(
-        "`/createpoll` - Create a poll (Admin)\n"
-        "`/closepoll` - Close poll and show results (Admin)"
-    ), inline=False)
-    
-    embed.add_field(name="📝 **Logging System**", value=(
-        "`/setlogchannel` - Set logging channel (Admin)\n"
-        "`/viewlogs` - View activity logs (Admin)"
-    ), inline=False)
-    
-    embed.add_field(name="🚨 **Emergency Lockdown**", value=(
-        "`/setlockdownconfig` - Configure lockdown (Admin)\n"
-        "`/lockdown` - Activate lockdown (Director)\n"
-        "`/unlockdown` - Deactivate lockdown (Director)"
-    ), inline=False)
-    
-    embed.add_field(name="👋 **Welcome System**", value=(
-        "`/setwelcomechannel` - Set welcome channel\n"
-        "`/setwelcomemessage` - Set welcome message\n"
-        "`/setautorole` - Set auto-role\n"
-        "`/testwelcome` - Test welcome"
-    ), inline=False)
-    
-    embed.add_field(name="🎓 **Training System**", value=(
-        "`/settrainingchannel` - Set training channel\n"
-        "`/settrainingmessage` - Set training message\n"
-        "`/scheduletraining` - Schedule training\n"
-        "`/sethelperrole` - Set helper role"
-    ), inline=False)
-    
-    embed.add_field(name="⚠️ **Warnings**", value=(
-        "`/warn` - Warn a user (Admin)\n"
-        "`/clearwarnings` - Clear warnings (Admin)\n"
-        "`/viewwarnings` - View warnings"
-    ), inline=False)
-    
-    embed.add_field(name="🏆 **Monthly Awards**", value=(
-        "`/setawardchannel` - Set award channel\n"
-        "`/setawardmessage` - Set award message\n"
-        "`/sendmonthlyaward` - Send award (Admin)"
-    ), inline=False)
-    
-    embed.add_field(name="🎭 **Reaction Roles**", value=(
-        "`/createreactionrole` - Create role group\n"
-        "`/addreactionroleoption` - Add role option\n"
-        "`/postreactionrole` - Post role message\n"
-        "`/listreactionroles` - List groups\n"
-        "`/deletereactionrole` - Delete group\n"
-        "`/testreactionrole` - Test system"
-    ), inline=False)
-    
-    embed.add_field(name="⚙️ **Utilities**", value=(
-        "`/setbotactivity` - Set bot status (Admin)\n"
-        "`/sendembed` - Send custom embed (Admin)\n"
-        "`/wakeup` - Wake up bot (Admin)\n"
-        "`/purge` - Delete multiple messages (Manage Messages)\n"
-        "`/commands` - Show this list"
-    ), inline=False)
-    
+
+    # Define your command categories and commands
+    categories = {
+        "🛡️ Security System (Start Here!)": [
+            "security", "setupguide", "securitystatus", "logevents", 
+            "configsecurity", "setgloballog", "disablegloballog"
+        ],
+        "🎖️ Agent Management": [
+            "registeragent", "viewagent", "listagents", "deleteagent"
+        ],
+        "⚡ Duty System": [
+            "dutyon", "dutyoff", "dutystatus", "dutylist", "setdutyrole"
+        ],
+        "📊 Polls & Voting": [
+            "createpoll", "closepoll"
+        ],
+        "📝 Logging System": [
+            "setlogchannel", "viewlogs"
+        ],
+        "🚨 Emergency Lockdown": [
+            "setlockdownconfig", "lockdown", "unlockdown"
+        ],
+        "👋 Welcome System": [
+            "setwelcomechannel", "setwelcomemessage", "setautorole", "testwelcome"
+        ],
+        "🎓 Training System": [
+            "settrainingchannel", "settrainingmessage", "scheduletraining", "sethelperrole"
+        ],
+        "🎭 Role Request System": [
+            "setuprolerequest", "createrolepanel", "addroleoption",
+            "postrolepanel", "listrolepanels", "deleterolepanel"
+        ],
+        "⚠️ Warnings": [
+            "warn", "clearwarnings", "viewwarnings"
+        ],
+        "🏆 Monthly Awards": [
+            "setawardchannel", "setawardmessage", "sendmonthlyaward"
+        ],
+        "🎭 Reaction Roles": [
+            "createreactionrole", "addreactionroleoption", "postreactionrole",
+            "listreactionroles", "deletereactionrole", "testreactionrole"
+        ],
+        "⚙️ Utilities": [
+            "setbotactivity", "sendembed", "wakeup", "purge", "commands"
+        ]
+    }
+
+    for category_name, command_list in categories.items():
+        value_lines = []
+        for command_name in command_list:
+            cmd = bot.tree.get_command(command_name)
+            if cmd:
+                value_lines.append(f"`/{cmd.name}` - {cmd.description}")
+            else:
+                value_lines.append(f"`/{command_name}` - No description set")
+        embed.add_field(name=category_name, value="\n".join(value_lines), inline=False)
+
     embed.set_footer(text=f"Requested by {interaction.user}")
-    
+
     await interaction.response.send_message(embed=embed)
 
 token = os.getenv('DISCORD_BOT_TOKEN')
