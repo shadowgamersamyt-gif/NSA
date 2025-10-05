@@ -1622,17 +1622,18 @@ async def create_role_panel(interaction: discord.Interaction):
         await interaction.response.send_message('❌ You do not have permission to use this command!', ephemeral=True)
         return
 
+    # Defer the initial response to allow follow-up messages
+    await interaction.response.defer(ephemeral=True)
+
     # Get all non-bot members
     members = [m for m in interaction.guild.members if not m.bot]
 
-    # Create dropdown using role IDs and requester
+    # Create dropdown using MemberSelect with role IDs and requester
     member_select = MemberSelect(members, requester=interaction.user)
     view = discord.ui.View()
     view.add_item(member_select)
 
-    # Only send the dropdown panel — no extra message text
-    await interaction.response.send_message(view=view)
-    
+    # Database check for configured panel channel
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
@@ -1643,14 +1644,15 @@ async def create_role_panel(interaction: discord.Interaction):
     conn.close()
     
     if not config or not config['panel_channel_id']:
-        await interaction.response.send_message('❌ Role request system not configured! Use `/setuprolerequest` first.', ephemeral=True)
+        await interaction.followup.send('❌ Role request system not configured! Use `/setuprolerequest` first.', ephemeral=True)
         return
     
     panel_channel = interaction.guild.get_channel(config['panel_channel_id'])
     if not panel_channel:
-        await interaction.response.send_message('❌ Panel channel not found!', ephemeral=True)
+        await interaction.followup.send('❌ Panel channel not found!', ephemeral=True)
         return
     
+    # Embed for role request panel
     embed = discord.Embed(
         title="🎭 Role Request System",
         description=(
@@ -1670,10 +1672,12 @@ async def create_role_panel(interaction: discord.Interaction):
     )
     embed.set_footer(text="Use the dropdowns below to start your request")
     
+    # Send the panel to the configured channel
     view = RoleRequestPanelView(interaction.guild)
-    
     await panel_channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f'✅ Role request panel posted in {panel_channel.mention}!', ephemeral=True)
+
+    # Send ephemeral confirmation back to the user
+    await interaction.followup.send(f'✅ Role request panel posted in {panel_channel.mention}!', ephemeral=True)
 
 @bot.tree.command(name="addadminrole", description="Add a role that can use admin commands")
 @app_commands.describe(role="The role to give admin permissions")
