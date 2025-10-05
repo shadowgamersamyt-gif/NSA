@@ -39,6 +39,19 @@ intents.guilds = True
 # -------------------------
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Replace bot = commands.Bot(...) with your actual bot definition above this
+
+# Make sure your commands update only for these two servers
+for guild_id in [1381367766535372903, 1415839232672403468]:
+    bot.tree.copy_global_to(guild=discord.Object(id=guild_id))
+
+@bot.event
+async def on_ready():
+    for guild_id in [1381367766535372903, 1415839232672403468]:
+        guild = discord.Object(id=guild_id)
+        await bot.tree.sync(guild=guild)  # Sync commands to these guilds only
+    print(f'Logged in as {bot.user}!')
+
 # -------------------------
 # GLOBAL BOT MESSAGE FILTER
 # -------------------------
