@@ -1001,11 +1001,6 @@ class RoleRequestPanelView(View):
         
         role_select = RoleSelect()
         self.add_item(role_select)
-        
-        members = [m for m in guild.members if not m.bot]
-        if members:
-            member_select = MemberSelect(members, interaction)
-            self.add_item(member_select)
 
     
     async def setup_hook(self):
