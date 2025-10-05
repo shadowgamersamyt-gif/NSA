@@ -981,9 +981,6 @@ class RoleRequestPanelView(View):
             member_select = MemberSelect(members)
             self.add_item(member_select)
 
-class RoleBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix='/', intents=intents)
     
     async def setup_hook(self):
         print("Initializing database...")
@@ -1057,8 +1054,6 @@ class RoleBot(commands.Bot):
     @presence_update_loop.before_loop
     async def before_presence_loop(self):
         await self.wait_until_ready()
-
-bot = RoleBot()
 
 @bot.event
 async def on_ready():
