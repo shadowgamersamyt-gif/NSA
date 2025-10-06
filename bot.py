@@ -1275,10 +1275,23 @@ async def on_member_join(member):
                 message = config['message'].replace('{user}', member.mention).replace('{server}', member.guild.name)
                 await channel.send(message)
         
-        if config['auto_role_id']:
-            role = member.guild.get_role(config['auto_role_id'])
-            if role:
-                await member.add_roles(role)
+        # --- Multi-role assignment ---
+conn = get_db()
+cur = conn.cursor(cursor_factory=RealDictCursor)
+
+cur.execute('SELECT role_id FROM autoroles WHERE guild_id = %s', (member.guild.id,))
+roles = cur.fetchall()
+
+cur.close()
+conn.close()
+
+roles_to_add = [member.guild.get_role(r['role_id']) for r in roles if member.guild.get_role(r['role_id'])]
+if roles_to_add:
+    try:
+        await member.add_roles(*roles_to_add, reason="Auto role assignment")
+        print(f"Gave {member} roles: {[role.name for role in roles_to_add]}")
+    except Exception as e:
+        print(f"Failed to add roles: {e}")
 
 @bot.event
 async def on_member_remove(member):
