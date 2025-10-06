@@ -3867,7 +3867,7 @@ async def commands_list(interaction: discord.Interaction):
             "setlockdownconfig", "lockdown", "unlockdown"
         ],
         "👋 Welcome System": [
-            "setwelcomechannel", "setwelcomemessage", "setautorole", "testwelcome"
+            "setwelcomechannel", "setwelcomemessage", "testwelcome", "setautorole", "removeautorole", "listautoroles"
         ],
         "🎓 Training System": [
             "settrainingchannel", "settrainingmessage", "scheduletraining", "sethelperrole"
