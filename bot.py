@@ -39,19 +39,21 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Your two server IDs
 GUILD_IDS = [1381367766535372903, 1415839232672403468]
 
-@bot.event
-async def on_ready():
-    # Clear all global commands (removes stale "Private Agent")
+async def clear_and_resync_commands():
+    # 1. Clear all global commands (removes leftovers)
     await bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
 
-    # Now sync only to your two servers
+    # 2. Clear and resync per-guild commands
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-        await bot.tree.clear_commands(guild=guild)   # clear guild cache
-        await bot.tree.sync(guild=guild)             # re-add only current ones
-        print(f"✅ Slash commands synced for guild {guild_id}!")
+        await bot.tree.clear_commands(guild=guild)
+        await bot.tree.sync(guild=guild)
+        print(f"🗑️ Cleared and re-synced commands for guild {guild_id}")
 
+@bot.event
+async def on_ready():
+    await clear_and_resync_commands()
     print(f"✅ Logged in as {bot.user}")
 
 # -------------------------
