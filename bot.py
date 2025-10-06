@@ -2894,24 +2894,25 @@ async def set_welcome_message(interaction: discord.Interaction, message: str):
     
     await interaction.response.send_message(f'✅ Welcome message set!')
 
-@bot.tree.command(name="setautorole", description="Set a role to automatically assign to new members")
+@bot.tree.command(name="setautorole", description="Add a role to automatically assign to new members")
 @app_commands.describe(role="The role to auto-assign")
 @app_commands.checks.has_permissions(administrator=True)
 async def set_auto_role(interaction: discord.Interaction, role: discord.Role):
     conn = get_db()
     cur = conn.cursor()
     
+    # Add role to the autoroles table, ignore if it already exists
     cur.execute('''
-        INSERT INTO welcome_config (guild_id, auto_role_id)
+        INSERT INTO autoroles (guild_id, role_id)
         VALUES (%s, %s)
-        ON CONFLICT (guild_id) DO UPDATE SET auto_role_id = %s
-    ''', (interaction.guild.id, role.id, role.id))
+        ON CONFLICT DO NOTHING
+    ''', (interaction.guild.id, role.id))
     
     conn.commit()
     cur.close()
     conn.close()
     
-    await interaction.response.send_message(f'✅ Auto-role set to {role.mention}!')
+    await interaction.response.send_message(f'✅ Added {role.mention} to autoroles!')
 
 @bot.tree.command(name="testwelcome", description="Test the welcome message")
 @app_commands.checks.has_permissions(administrator=True)
