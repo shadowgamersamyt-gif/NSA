@@ -2907,6 +2907,9 @@ async def set_welcome_message(interaction: discord.Interaction, message: str):
     
     await interaction.response.send_message(f'✅ Welcome message set!')
 
+# -------------------------
+# Set Auto Role Command
+# -------------------------
 @bot.tree.command(name="setautorole", description="Add a role to automatically assign to new members")
 @app_commands.describe(role="The role to auto-assign")
 @app_commands.checks.has_permissions(administrator=True)
@@ -2914,7 +2917,7 @@ async def set_auto_role(interaction: discord.Interaction, role: discord.Role):
     conn = get_db()
     cur = conn.cursor()
     
-    # Add role to the autoroles table, ignore if it already exists
+    # Add role to the autoroles table; ignore if it already exists
     cur.execute('''
         INSERT INTO autoroles (guild_id, role_id)
         VALUES (%s, %s)
@@ -2926,6 +2929,49 @@ async def set_auto_role(interaction: discord.Interaction, role: discord.Role):
     conn.close()
     
     await interaction.response.send_message(f'✅ Added {role.mention} to autoroles!')
+
+
+# -------------------------
+# Remove Auto Role Command
+# -------------------------
+@bot.tree.command(name="removeautorole", description="Remove a role from the autoroles list")
+@app_commands.describe(role="The role to remove")
+@app_commands.checks.has_permissions(administrator=True)
+async def remove_autorole(interaction: discord.Interaction, role: discord.Role):
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Delete the role from the autoroles table
+    cur.execute('DELETE FROM autoroles WHERE guild_id = %s AND role_id = %s', (interaction.guild.id, role.id))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    await interaction.response.send_message(f'❌ Removed {role.mention} from autoroles!')
+
+
+# -------------------------
+# List Auto Roles Command
+# -------------------------
+@bot.tree.command(name="listautoroles", description="List all roles automatically assigned on join")
+async def list_autoroles(interaction: discord.Interaction):
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Fetch all roles for this guild
+    cur.execute('SELECT role_id FROM autoroles WHERE guild_id = %s', (interaction.guild.id,))
+    rows = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    if not rows:
+        await interaction.response.send_message("⚠️ No autoroles are set for this server.")
+    else:
+        # Convert role IDs to mentions
+        roles = [interaction.guild.get_role(r[0]).mention for r in rows if interaction.guild.get_role(r[0])]
+        await interaction.response.send_message("📋 Autoroles: " + ", ".join(roles))
 
 @bot.tree.command(name="testwelcome", description="Test the welcome message")
 @app_commands.checks.has_permissions(administrator=True)
