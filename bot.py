@@ -34,26 +34,25 @@ intents.members = True
 intents.message_content = True
 intents.guilds = True
 
-# -------------------------
-# DISCORD BOT SETUP + SLASH COMMANDS
-# -------------------------
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Make sure your commands update only for these two servers
+# Your two server IDs
 GUILD_IDS = [1381367766535372903, 1415839232672403468]
 
 @bot.event
 async def on_ready():
+    # Clear all global commands (removes stale "Private Agent")
+    await bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
+
+    # Now sync only to your two servers
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
+        await bot.tree.clear_commands(guild=guild)   # clear guild cache
+        await bot.tree.sync(guild=guild)             # re-add only current ones
+        print(f"✅ Slash commands synced for guild {guild_id}!")
 
-        # Clear all existing commands for this guild
-        bot.tree.clear_commands(guild=guild)
-        
-        # Sync commands to this guild only (registers only current code commands)
-        await bot.tree.sync(guild=guild)
-
-    print(f'Logged in as {bot.user}!')
+    print(f"✅ Logged in as {bot.user}")
 
 # -------------------------
 # GLOBAL BOT MESSAGE FILTER
@@ -62,17 +61,6 @@ async def on_ready():
 async def ignore_bot_commands(ctx):
     # Prevent commands from running if the author is a bot
     return not ctx.author.bot
-
-# List of your server IDs for instant command sync
-GUILDS = [1381367766535372903, 1415839232672403468]  # <-- replace with your two server IDs
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-    for guild_id in GUILDS:
-        guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild)
-        print(f"Slash commands synced for guild {guild_id}!")
 
 def get_db():
     return psycopg2.connect(os.getenv('DATABASE_URL'))
