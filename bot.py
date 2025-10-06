@@ -3088,7 +3088,12 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     
     embed.set_footer(text="React with ✅ to attend or 🦅 to help")
     
-    sent_message = await channel.send(embed=embed)
+    # Send message tagging @everyone
+    sent_message = await channel.send(
+        content="@everyone",
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(everyone=True)
+    )
     
     await sent_message.add_reaction('✅')
     await sent_message.add_reaction('🦅')
