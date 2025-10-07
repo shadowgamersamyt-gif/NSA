@@ -3249,10 +3249,10 @@ async def update_training_embed(payload: discord.RawReactionActionEvent):
     for reaction in msg.reactions:
         users = [u async for u in reaction.users()]
         if str(reaction.emoji) == '✅':
-            attending_members = users
+            attending_members = [u for u in users if not u.bot]
         elif str(reaction.emoji) == '🦅' and helper_role_row:
             helper_role = guild.get_role(helper_role_row['helper_role_id'])
-            helping_members = [u for u in users if helper_role in u.roles]
+            helping_members = [u for u in users if not u.bot and helper_role in u.roles]
 
     # Update embed
     embed = msg.embeds[0]
