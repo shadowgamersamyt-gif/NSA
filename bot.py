@@ -3197,7 +3197,7 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
         allowed_mentions=discord.AllowedMentions(everyone=True)
     )
     
-    # Add reactions safely so bot reactions don’t count as attending/helping
+    # Add ✅ and 🦅 reactions automatically
     await sent_message.add_reaction('✅')
     await sent_message.add_reaction('🦅')
     
@@ -3235,9 +3235,12 @@ async def update_training_embed(payload: discord.RawReactionActionEvent):
     if not training_msg:
         return
 
-    # Remove 🦅 reactions for users without helper role
-    if str(payload.emoji) == '🦅' and helper_role_row:
+    helper_role = None
+    if helper_role_row:
         helper_role = guild.get_role(helper_role_row['helper_role_id'])
+
+    # Remove 🦅 reactions for users without helper role
+    if str(payload.emoji) == '🦅' and helper_role:
         if helper_role not in member.roles:
             try:
                 await msg.remove_reaction(payload.emoji, member)
@@ -3251,9 +3254,11 @@ async def update_training_embed(payload: discord.RawReactionActionEvent):
         users = [u async for u in reaction.users()]
         if str(reaction.emoji) == '✅':
             attending_members = [u for u in users if not u.bot]
-        elif str(reaction.emoji) == '🦅' and helper_role_row:
-            helper_role = guild.get_role(helper_role_row['helper_role_id'])
-            helping_members = [u for u in users if not u.bot and helper_role in u.roles]
+        elif str(reaction.emoji) == '🦅':
+            if helper_role:
+                helping_members = [u for u in users if not u.bot and helper_role in u.roles]
+            else:
+                helping_members = []
 
     # Update embed
     embed = msg.embeds[0]
