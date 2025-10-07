@@ -3469,7 +3469,9 @@ async def send_monthly_award(interaction: discord.Interaction, award_type: str, 
     )
     embed.set_thumbnail(url=winner.display_avatar.url)
     
-    await channel.send(embed=embed)
+    # Send embed with @everyone ping
+    await channel.send(content="@everyone", embed=embed, allowed_mentions=discord.AllowedMentions(everyone=True))
+    
     await interaction.response.send_message(f'✅ Award sent to {channel.mention}!')
 
 @bot.tree.command(name="createreactionrole", description="Create a reaction role group with buttons")
