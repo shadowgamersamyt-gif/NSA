@@ -3932,7 +3932,8 @@ async def commands_list(interaction: discord.Interaction):
             "setlockdownconfig", "lockdown", "unlockdown"
         ],
         "👋 Welcome System": [
-            "setwelcomechannel", "setwelcomemessage", "testwelcome", "setautorole", "removeautorole", "listautoroles"
+            "setwelcomechannel", "setwelcomemessage", "testwelcome", "setautorole", 
+            "removeautorole", "listautoroles"
         ],
         "🎓 Training System": [
             "settrainingchannel", "settrainingmessage", "scheduletraining", "sethelperrole"
@@ -3949,6 +3950,9 @@ async def commands_list(interaction: discord.Interaction):
         "🎭 Reaction Roles": [
             "createreactionrole", "addreactionroleoption", "postreactionrole",
             "listreactionroles", "deletereactionrole", "testreactionrole"
+        ],
+        "🛠️ Auto Role System": [
+            "setautorole", "removeautorole", "listautoroles"
         ],
         "⚙️ Utilities": [
             "setbotactivity", "sendembed", "wakeup", "purge", "commands"
