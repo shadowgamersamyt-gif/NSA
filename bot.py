@@ -3174,7 +3174,7 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     else:
         discord_timestamp = time
     
-    # Use exact message template
+    # Use message template
     message_template = config.get('message', '🎓 Training scheduled for {time}! Hosted by {host}')
     message_content = message_template.replace("{host}", interaction.user.mention).replace("{time}", discord_timestamp)
     
@@ -3197,6 +3197,7 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
         allowed_mentions=discord.AllowedMentions(everyone=True)
     )
     
+    # Add reactions safely so bot reactions don’t count as attending/helping
     await sent_message.add_reaction('✅')
     await sent_message.add_reaction('🦅')
     
@@ -3243,7 +3244,7 @@ async def update_training_embed(payload: discord.RawReactionActionEvent):
             except:
                 pass
 
-    # Gather all reactions for embed
+    # Gather reactions, filter out bot accounts
     attending_members = []
     helping_members = []
     for reaction in msg.reactions:
