@@ -3000,7 +3000,9 @@ async def test_welcome(interaction: discord.Interaction):
     await channel.send(formatted_message)
     await interaction.response.send_message(f'✅ Test welcome message sent to {channel.mention}!')
 
-# ✅ SET TRAINING CHANNEL
+# -------------------------
+# SET TRAINING CHANNEL
+# -------------------------
 @bot.tree.command(name="settrainingchannel", description="Set the channel for training notifications")
 @app_commands.describe(
     training_type="Type of training",
@@ -3030,7 +3032,9 @@ async def set_training_channel(interaction: discord.Interaction, training_type: 
     await interaction.response.send_message(f'✅ {training_display} training channel set to {channel.mention}!')
 
 
-# ✅ SET TRAINING MESSAGE
+# -------------------------
+# SET TRAINING MESSAGE
+# -------------------------
 @bot.tree.command(name="settrainingmessage", description="Set the message template for training notifications")
 @app_commands.describe(
     training_type="Type of training",
@@ -3060,7 +3064,32 @@ async def set_training_message(interaction: discord.Interaction, training_type: 
     await interaction.response.send_message(f'✅ {training_display} training message set!')
 
 
-# ✅ SCHEDULE TRAINING
+# -------------------------
+# SET HELPER ROLE
+# -------------------------
+@bot.tree.command(name="sethelperrole", description="Set the helper role for training")
+@app_commands.describe(role="The role that can help training")
+@app_commands.checks.has_permissions(administrator=True)
+async def set_helper_role(interaction: discord.Interaction, role: discord.Role):
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute('''
+        INSERT INTO training_roles (guild_id, helper_role_id)
+        VALUES (%s, %s)
+        ON CONFLICT (guild_id) DO UPDATE SET helper_role_id = %s
+    ''', (interaction.guild.id, role.id, role.id))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    await interaction.response.send_message(f'✅ Training helper role set to {role.mention}!')
+
+
+# -------------------------
+# SCHEDULE TRAINING
+# -------------------------
 @bot.tree.command(name="scheduletraining", description="Send a training notification")
 @app_commands.describe(
     training_type="Type of training",
@@ -3099,9 +3128,9 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     config = cur.fetchone()
     
     if not config or not config['channel_id']:
-        training_display = training_type.replace('_', ' ').title()
         cur.close()
         conn.close()
+        training_display = training_type.replace('_', ' ').title()
         await interaction.response.send_message(f'❌ {training_display} training channel not configured!')
         return
     
@@ -3112,6 +3141,7 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
         await interaction.response.send_message('❌ Training channel not found!')
         return
     
+    # Parse time for display
     parsed_time = parse_time_string(time)
     if parsed_time:
         time_type, time_value = parsed_time
@@ -3123,32 +3153,23 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     else:
         discord_timestamp = time
     
+    # Use exact message template
     message_template = config.get('message', '🎓 Training scheduled for {time}! Hosted by {host}')
+    message_content = message_template.replace("{host}", interaction.user.mention).replace("{time}", discord_timestamp)
     
     training_display = training_type.replace('_', ' ').title()
     
     embed = discord.Embed(
         title=f"🎓 {training_display} Training",
-        description=f"**Time:** {discord_timestamp}\n**Host:** {interaction.user.mention}",
+        description=message_content,
         color=discord.Color.blue(),
         timestamp=datetime.now()
     )
     
-    embed.add_field(
-        name="✅ Attending (0)",
-        value="None yet",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🦅 Helping (0)",
-        value="None yet",
-        inline=False
-    )
-    
+    embed.add_field(name="✅ Attending (0)", value="None yet", inline=False)
+    embed.add_field(name="🦅 Helping (0)", value="None yet", inline=False)
     embed.set_footer(text="React with ✅ to attend or 🦅 to help")
     
-    # Send message tagging @everyone
     sent_message = await channel.send(
         content="@everyone",
         embed=embed,
@@ -3158,6 +3179,7 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     await sent_message.add_reaction('✅')
     await sent_message.add_reaction('🦅')
     
+    # Save training message to DB
     cur.execute('''
         INSERT INTO training_messages (message_id, guild_id, channel_id, training_type, message_template, training_time, host_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -3169,24 +3191,67 @@ async def schedule_training(interaction: discord.Interaction, training_type: str
     
     await interaction.response.send_message(f'✅ {training_display} training scheduled and posted to {channel.mention}!')
 
-@bot.tree.command(name="sethelperrole", description="Set the helper role for training")
-@app_commands.describe(role="The role for training helpers")
-@app_commands.checks.has_permissions(administrator=True)
-async def set_helper_role(interaction: discord.Interaction, role: discord.Role):
+
+# -------------------------
+# DYNAMIC REACTION HANDLING
+# -------------------------
+async def update_training_embed(payload: discord.RawReactionActionEvent):
+    guild = bot.get_guild(payload.guild_id)
+    member = guild.get_member(payload.user_id)
+    channel = guild.get_channel(payload.channel_id)
+    msg = await channel.fetch_message(payload.message_id)
+
     conn = get_db()
-    cur = conn.cursor()
-    
-    cur.execute('''
-        INSERT INTO training_roles (guild_id, helper_role_id)
-        VALUES (%s, %s)
-        ON CONFLICT (guild_id) DO UPDATE SET helper_role_id = %s
-    ''', (interaction.guild.id, role.id, role.id))
-    
-    conn.commit()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM training_messages WHERE message_id = %s', (payload.message_id,))
+    training_msg = cur.fetchone()
+    cur.execute('SELECT helper_role_id FROM training_roles WHERE guild_id = %s', (payload.guild_id,))
+    helper_role_row = cur.fetchone()
     cur.close()
     conn.close()
-    
-    await interaction.response.send_message(f'✅ Training helper role set to {role.mention}!')
+
+    if not training_msg:
+        return
+
+    # Remove 🦅 reactions for users without helper role
+    if str(payload.emoji) == '🦅' and helper_role_row:
+        helper_role = guild.get_role(helper_role_row['helper_role_id'])
+        if helper_role not in member.roles:
+            try:
+                await msg.remove_reaction(payload.emoji, member)
+            except:
+                pass
+
+    # Gather all reactions for embed
+    attending_members = []
+    helping_members = []
+    for reaction in msg.reactions:
+        users = [u async for u in reaction.users()]
+        if str(reaction.emoji) == '✅':
+            attending_members = users
+        elif str(reaction.emoji) == '🦅' and helper_role_row:
+            helper_role = guild.get_role(helper_role_row['helper_role_id'])
+            helping_members = [u for u in users if helper_role in u.roles]
+
+    # Update embed
+    embed = msg.embeds[0]
+    embed.set_field_at(0, name=f"✅ Attending ({len(attending_members)})",
+                       value=', '.join([u.mention for u in attending_members]) or "None yet",
+                       inline=False)
+    embed.set_field_at(1, name=f"🦅 Helping ({len(helping_members)})",
+                       value=', '.join([u.mention for u in helping_members]) or "None yet",
+                       inline=False)
+    await msg.edit(embed=embed)
+
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    await update_training_embed(payload)
+
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    await update_training_embed(payload)
 
 @bot.tree.command(name="warn", description="Issue a warning to a user")
 @app_commands.describe(
