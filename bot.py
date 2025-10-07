@@ -53,8 +53,15 @@ async def clear_and_resync_commands():
 
 @bot.event
 async def on_ready():
-    await clear_and_resync_commands()
-    print(f"✅ Logged in as {bot.user}")
+    await clear_and_resync_commands()  # Keep your existing clearing logic
+
+    # Sync commands to each guild in your list
+    for guild_id in GUILD_IDS:
+        guild = discord.Object(id=guild_id)
+        await bot.tree.sync(guild=guild)
+        print(f"✅ Commands synced to guild {guild_id}")
+
+    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
 
 # -------------------------
 # GLOBAL BOT MESSAGE FILTER
