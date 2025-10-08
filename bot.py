@@ -35,6 +35,86 @@ intents.message_content = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+# ---- Load persistent views ----
+async def load_persistent_views():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Reaction role groups
+    cur.execute('SELECT * FROM reaction_role_groups WHERE message_id IS NOT NULL')
+    groups = cur.fetchall()
+
+    for group in groups:
+        cur.execute('SELECT * FROM reaction_role_options WHERE group_id = %s', (group['id'],))
+        options = cur.fetchall()
+
+        if options:
+            view = ReactionRoleView(group['id'], options, group['is_exclusive'])
+            bot.add_view(view)
+
+    # Polls
+    cur.execute('SELECT * FROM polls WHERE is_active = true')
+    polls = cur.fetchall()
+
+    for poll in polls:
+        options = json.loads(poll['options'])
+        view = PollView(poll['poll_id'], options)
+        bot.add_view(view)
+
+    cur.close()
+    conn.close()
+
+
+# ---- Presence update loop ----
+@tasks.loop(minutes=5)
+async def presence_update_loop():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute('SELECT * FROM presence_config LIMIT 1')
+        config = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if config:
+            activity_text = config.get('status_message', 'Managing the Agency')
+            activity_type = config.get('activity_type', 'playing')
+
+            if activity_type == 'playing':
+                activity = discord.Game(name=activity_text)
+            elif activity_type == 'watching':
+                activity = discord.Activity(type=discord.ActivityType.watching, name=activity_text)
+            elif activity_type == 'listening':
+                activity = discord.Activity(type=discord.ActivityType.listening, name=activity_text)
+            else:
+                activity = discord.Game(name=activity_text)
+
+            await bot.change_presence(status=discord.Status.online, activity=activity)
+        else:
+            await bot.change_presence(status=discord.Status.online, activity=discord.Game(name="Managing the Agency"))
+    except Exception as e:
+        print(f'Error updating presence: {e}')
+
+
+@presence_update_loop.before_loop
+async def before_presence_loop():
+    await bot.wait_until_ready()
+
+
+# ---- Bot setup hook ----
+@bot.event
+async def setup_hook():
+    print("Initializing database...")
+    init_db()
+    print("Loading persistent views...")
+    await load_persistent_views()
+    print("Syncing commands with Discord...")
+    await bot.tree.sync()
+    print("Commands synced!")
+
+    presence_update_loop.start()
 
 # Your two server IDs
 GUILD_IDS = [1381367766535372903, 1415839232672403468]
