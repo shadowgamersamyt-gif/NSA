@@ -854,216 +854,143 @@ class RoleRequestReviewView(View):
     def __init__(self, request_id: int):
         super().__init__(timeout=None)
         self.request_id = request_id
-        
+
         approve_button = Button(
             label='Approve',
             style=discord.ButtonStyle.success,
             custom_id=f'role_request_approve_{request_id}'
         )
         approve_button.callback = self.approve_callback
-        
+
         deny_button = Button(
             label='Deny',
             style=discord.ButtonStyle.danger,
             custom_id=f'role_request_deny_{request_id}'
         )
         deny_button.callback = self.deny_callback
-        
+
         self.add_item(approve_button)
         self.add_item(deny_button)
-    
+
     async def approve_callback(self, interaction: discord.Interaction):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
         cur.execute('SELECT * FROM role_requests WHERE id = %s', (self.request_id,))
         request = cur.fetchone()
-        
+
         if not request:
             await interaction.response.send_message('❌ Request not found!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         if request['status'] != 'pending':
             await interaction.response.send_message('❌ This request has already been reviewed!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (interaction.guild.id,))
         config = cur.fetchone()
-        
+
         if not config:
             await interaction.response.send_message('❌ Role request system not configured!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         role_mapping = {
             'Probationary Private': config['probationary_private_role_id'],
             'Private': config['private_role_id'],
             'Private Agent': config['private_agent_role_id']
         }
-        
+
         role_id = role_mapping.get(request['requested_role'])
         if not role_id:
             await interaction.response.send_message('❌ Role not found in configuration!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         role = interaction.guild.get_role(role_id)
         if not role:
             await interaction.response.send_message('❌ Role not found in server!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         member = interaction.guild.get_member(request['user_id'])
         if not member:
             await interaction.response.send_message('❌ Member not found!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         await member.add_roles(role)
-        
+
         cur.execute('''
             UPDATE role_requests 
             SET status = 'approved', reviewed_at = %s, reviewed_by = %s 
             WHERE id = %s
         ''', (datetime.now(), interaction.user.id, self.request_id))
         conn.commit()
-        
         cur.close()
         conn.close()
-        
+
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.add_field(name="Status", value=f"✅ Approved by {interaction.user.mention}", inline=False)
-        
+
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message(f'✅ Request approved! {role.mention} role has been given to {member.mention}', ephemeral=True)
-        
+
         try:
             await member.send(f'✅ Your role request for **{request["requested_role"]}** has been approved! You have been given the {role.mention} role.')
         except:
             pass
-    
+
     async def deny_callback(self, interaction: discord.Interaction):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
         cur.execute('SELECT * FROM role_requests WHERE id = %s', (self.request_id,))
         request = cur.fetchone()
-        
+
         if not request:
             await interaction.response.send_message('❌ Request not found!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         if request['status'] != 'pending':
             await interaction.response.send_message('❌ This request has already been reviewed!', ephemeral=True)
             cur.close()
             conn.close()
             return
-        
+
         cur.execute('''
             UPDATE role_requests 
             SET status = 'denied', reviewed_at = %s, reviewed_by = %s 
             WHERE id = %s
         ''', (datetime.now(), interaction.user.id, self.request_id))
         conn.commit()
-        
         cur.close()
         conn.close()
-        
+
         member = interaction.guild.get_member(request['user_id'])
-        
+
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.add_field(name="Status", value=f"❌ Denied by {interaction.user.mention}", inline=False)
-        
+
         await interaction.message.edit(embed=embed, view=None)
         await interaction.response.send_message(f'❌ Request denied.', ephemeral=True)
-        
+
         if member:
             try:
                 await member.send(f'❌ Your role request for **{request["requested_role"]}** has been denied.')
             except:
                 pass
 
-class MemberSelect(discord.ui.Select):
-    def __init__(self, members: list, requester: discord.Member):
-        allowed_role_ids = [1423052817496674304, 1422375802011389982, 1410404396675895406]
-
-        options = []
-        count = 0
-
-        for member in members:
-            if member.bot:
-                continue  # skip bots
-            if member == requester:
-                continue  # exclude requester
-            if any(role.id in allowed_role_ids for role in member.roles):
-                options.append(discord.SelectOption(
-                    label=member.display_name[:100],
-                    value=str(member.id),
-                    description=f"ID: {member.id}"
-                ))
-                count += 1
-                if count >= 25:  # Discord dropdown limit
-                    break
-
-        super().__init__(
-            placeholder="Select your training officer...",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="training_officer_select"
-        )
-    
-    async def callback(self, interaction: discord.Interaction):
-        selected_member_id = int(self.values[0])
-        
-        selected_role = None
-        for item in self.view.children:
-            if isinstance(item, RoleSelect):
-                if hasattr(item, 'selected_value'):
-                    selected_role = item.selected_value
-                    break
-        
-        if not selected_role:
-            await interaction.response.send_message('❌ Please select a role first!', ephemeral=True)
-            return
-        
-        conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute('''
-            INSERT INTO role_requests (guild_id, user_id, requested_role, training_officer_id, status)
-            VALUES (%s, %s, %s, %s, 'awaiting_screenshot')
-            RETURNING id
-        ''', (interaction.guild.id, interaction.user.id, selected_role, selected_member_id))
-        
-        request_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        training_officer = interaction.guild.get_member(selected_member_id)
-        officer_name = training_officer.display_name if training_officer else "Unknown"
-        
-        await interaction.response.send_message(
-            f'✅ Role request created!\n\n'
-            f'**Selected Role:** {selected_role}\n'
-            f'**Training Officer:** {officer_name}\n\n'
-            f'📸 **Next Step:** Please upload your screenshot as an attachment in your next message in this channel.\n'
-            f'The screenshot will be automatically added to your request.',
-            ephemeral=True
-        )
 
 class RoleSelect(discord.ui.Select):
     def __init__(self):
@@ -1080,92 +1007,22 @@ class RoleSelect(discord.ui.Select):
             custom_id="role_select"
         )
         self.selected_value = None
-    
+
     async def callback(self, interaction: discord.Interaction):
         self.selected_value = self.values[0]
-        await interaction.response.send_message(f'✅ Selected: **{self.selected_value}**. Now select your training officer from the dropdown below.', ephemeral=True)
+        await interaction.response.send_message(
+            f'✅ Selected: **{self.selected_value}**. Now tag your training officer in this channel.',
+            ephemeral=True
+        )
+
 
 class RoleRequestPanelView(View):
     def __init__(self, guild: discord.Guild):
         super().__init__(timeout=None)
         self.guild = guild
-        
+
         role_select = RoleSelect()
         self.add_item(role_select)
-
-    
-    async def setup_hook(self):
-        print("Initializing database...")
-        init_db()
-        print("Loading persistent views...")
-        await self.load_persistent_views()
-        print("Syncing commands with Discord...")
-        await self.tree.sync()
-        print("Commands synced!")
-        
-        self.presence_update_loop.start()
-    
-    async def load_persistent_views(self):
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cur.execute('SELECT * FROM reaction_role_groups WHERE message_id IS NOT NULL')
-        groups = cur.fetchall()
-        
-        for group in groups:
-            cur.execute('SELECT * FROM reaction_role_options WHERE group_id = %s', (group['id'],))
-            options = cur.fetchall()
-            
-            if options:
-                view = ReactionRoleView(group['id'], options, group['is_exclusive'])
-                self.add_view(view)
-        
-        cur.execute('SELECT * FROM polls WHERE is_active = true')
-        polls = cur.fetchall()
-        
-        for poll in polls:
-            options = json.loads(poll['options'])
-            view = PollView(poll['poll_id'], options)
-            self.add_view(view)
-        
-        cur.close()
-        conn.close()
-    
-    @tasks.loop(minutes=5)
-    async def presence_update_loop(self):
-        """Keep bot presence updated"""
-        try:
-            conn = get_db()
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cur.execute('SELECT * FROM presence_config LIMIT 1')
-            config = cur.fetchone()
-            
-            cur.close()
-            conn.close()
-            
-            if config:
-                activity_text = config.get('status_message', 'Managing the Agency')
-                activity_type = config.get('activity_type', 'playing')
-                
-                if activity_type == 'playing':
-                    activity = discord.Game(name=activity_text)
-                elif activity_type == 'watching':
-                    activity = discord.Activity(type=discord.ActivityType.watching, name=activity_text)
-                elif activity_type == 'listening':
-                    activity = discord.Activity(type=discord.ActivityType.listening, name=activity_text)
-                else:
-                    activity = discord.Game(name=activity_text)
-                
-                await self.change_presence(status=discord.Status.online, activity=activity)
-            else:
-                await self.change_presence(status=discord.Status.online, activity=discord.Game(name="Managing the Agency"))
-        except Exception as e:
-            print(f'Error updating presence: {e}')
-    
-    @presence_update_loop.before_loop
-    async def before_presence_loop(self):
-        await self.wait_until_ready()
 
 @bot.event
 async def on_ready():
