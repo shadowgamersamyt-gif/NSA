@@ -1113,66 +1113,107 @@ async def on_reaction_remove(reaction, user):
         cur.close()
         conn.close()
 
+# ------------------------------
+# on_message event
+# ------------------------------
 @bot.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author.bot or not message.guild:
         return
-    
-    if not message.guild:
-        return
-    
-    if not message.attachments:
-        return
-    
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cur.execute('''
-        SELECT * FROM role_requests 
-        WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_screenshot'
-        ORDER BY requested_at DESC
-        LIMIT 1
-    ''', (message.guild.id, message.author.id))
-    
-    pending_request = cur.fetchone()
-    
-    cur.close()
-    conn.close()
-    
-    if pending_request:
-        image_attachment = None
-        for attachment in message.attachments:
-            if attachment.content_type and attachment.content_type.startswith('image/'):
-                image_attachment = attachment
-                break
-        
-        if image_attachment:
+
+    # ------------------------------
+    # Handle training officer mentions
+    # ------------------------------
+    if message.mentions:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute('''
+            SELECT * FROM role_requests
+            WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_screenshot'
+            ORDER BY requested_at DESC
+            LIMIT 1
+        ''', (message.guild.id, message.author.id))
+
+        pending_request = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if pending_request:
             try:
                 await message.add_reaction('✅')
-                await process_role_request_screenshot(pending_request['id'], image_attachment.url, message.guild)
-                await message.delete()
-
-                try:
-                    await message.author.send(
-                        f'✅ Your role request has been submitted for review!\n\n'
-                        f'**Requested Role:** {pending_request["requested_role"]}\n'
-                        f'**Training Officer:** <@{pending_request["training_officer_id"]}>\n\n'
-                        f'You will be notified when your request is reviewed.'
-                    )
-                except:
-                    await message.channel.send(
-                        f'{message.author.mention} ✅ Your role request has been submitted for review!',
-                        delete_after=10
-                    )
-            except Exception as e:
-                print(f'Error processing screenshot: {e}')
-                await message.add_reaction('❌')
-        else:
-            await message.add_reaction('❌')
-            try:
-                await message.author.send('❌ Please upload an image file (PNG, JPG, etc.) for your role request screenshot.')
             except:
                 pass
+
+            await message.delete(delay=1)
+
+            try:
+                await message.author.send(
+                    "**✅ Training officer tagged successfully!**\n\n"
+                    "Now upload your screenshot in this channel to complete your role request."
+                )
+            except:
+                await message.channel.send(
+                    f"{message.author.mention} **✅ Training officer tagged successfully!** "
+                    "Now upload your screenshot to complete your request.",
+                    delete_after=10
+                )
+            return  # stop further processing
+
+    # ------------------------------
+    # Handle screenshot attachments
+    # ------------------------------
+    if message.attachments:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute('''
+            SELECT * FROM role_requests 
+            WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_screenshot'
+            ORDER BY requested_at DESC
+            LIMIT 1
+        ''', (message.guild.id, message.author.id))
+
+        pending_request = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if pending_request:
+            image_attachment = None
+            for attachment in message.attachments:
+                if attachment.content_type and attachment.content_type.startswith('image/'):
+                    image_attachment = attachment
+                    break
+
+            if image_attachment:
+                try:
+                    await message.add_reaction('✅')
+                    await process_role_request_screenshot(pending_request['id'], image_attachment.url, message.guild)
+                    await message.delete()
+
+                    try:
+                        await message.author.send(
+                            f'✅ Your role request has been submitted for review!\n\n'
+                            f'**Requested Role:** {pending_request["requested_role"]}\n'
+                            f'**Training Officer:** <@{pending_request["training_officer_id"]}>\n\n'
+                            f'You will be notified when your request is reviewed.'
+                        )
+                    except:
+                        await message.channel.send(
+                            f'{message.author.mention} ✅ Your role request has been submitted for review!',
+                            delete_after=10
+                        )
+                except Exception as e:
+                    print(f'Error processing screenshot: {e}')
+                    await message.add_reaction('❌')
+            else:
+                await message.add_reaction('❌')
+                try:
+                    await message.author.send(
+                        '❌ **Please upload an image file (PNG, JPG, etc.) for your role request screenshot.**'
+                    )
+                except:
+                    pass
 
 @bot.event
 async def on_member_join(member):
@@ -1316,19 +1357,29 @@ async def on_member_update(before, after):
                     embed.add_field(name="Removed Roles", value=", ".join([r.mention for r in removed_roles]), inline=False)
                 await log_channel.send(embed=embed)
 
+# ------------------------------
+# on_message_delete event
+# ------------------------------
 @bot.event
 async def on_message_delete(message):
-    if message.author.bot:
+    if message.author.bot or not message.guild:
         return
     
-    log_event(message.guild.id, 'message_delete', target_user_id=message.author.id, actor_user_id=message.author.id,
-             details={'content': message.content[:500], 'channel': message.channel.name})
+    log_event(
+        message.guild.id,
+        'message_delete',
+        target_user_id=message.author.id,
+        actor_user_id=message.author.id,
+        details={'content': message.content[:500], 'channel': message.channel.name}
+    )
     
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    cur.execute('SELECT channel_id FROM log_channels WHERE guild_id = %s AND event_type = %s', 
-                (message.guild.id, 'message_delete'))
+    cur.execute(
+        'SELECT channel_id FROM log_channels WHERE guild_id = %s AND event_type = %s', 
+        (message.guild.id, 'message_delete')
+    )
     log_channel_config = cur.fetchone()
     
     cur.close()
@@ -1348,19 +1399,29 @@ async def on_message_delete(message):
                 embed.add_field(name="Content", value=message.content[:1024], inline=False)
             await log_channel.send(embed=embed)
 
+# ------------------------------
+# on_message_edit event
+# ------------------------------
 @bot.event
 async def on_message_edit(before, after):
     if before.author.bot or before.content == after.content:
         return
     
-    log_event(after.guild.id, 'message_edit', target_user_id=after.author.id, actor_user_id=after.author.id,
-             details={'before': before.content[:500], 'after': after.content[:500], 'channel': after.channel.name})
+    log_event(
+        after.guild.id,
+        'message_edit',
+        target_user_id=after.author.id,
+        actor_user_id=after.author.id,
+        details={'before': before.content[:500], 'after': after.content[:500], 'channel': after.channel.name}
+    )
     
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    cur.execute('SELECT channel_id FROM log_channels WHERE guild_id = %s AND event_type = %s', 
-                (after.guild.id, 'message_edit'))
+    cur.execute(
+        'SELECT channel_id FROM log_channels WHERE guild_id = %s AND event_type = %s', 
+        (after.guild.id, 'message_edit')
+    )
     log_channel_config = cur.fetchone()
     
     cur.close()
