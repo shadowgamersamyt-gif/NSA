@@ -1682,6 +1682,7 @@ async def create_role_panel(interaction: discord.Interaction):
         await interaction.response.send_message('❌ You do not have permission to use this command!', ephemeral=True)
         return
 
+    # Load role request config from DB
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (interaction.guild.id,))
@@ -1706,7 +1707,7 @@ async def create_role_panel(interaction: discord.Interaction):
             "Welcome to the role request system!\n\n"
             "**How to request a role:**\n"
             "1. Select the role you want from the dropdown below\n"
-            "**2. Tag your training officer in this channel**\n"
+            "👉 **2. Tag your training officer in this channel**\n"
             "3. Upload your screenshot as an image attachment in this channel\n"
             "4. Wait for review and approval\n\n"
             "**Available Roles:**\n"
