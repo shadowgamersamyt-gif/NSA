@@ -1034,7 +1034,7 @@ class RoleSelect(discord.ui.Select):
 
         await interaction.response.send_message(
             f"✅ You selected **{self.selected_value}**.\n\n"
-            f"👉 **Next Step:** Tag your training officer in this channel.\n\n"
+            f"👉 **Next Step:** **Tag your training officer** in this channel.\n"
             f"(Once tagged, the bot will react ✅ and then delete your message.)",
             ephemeral=True
         )
@@ -1045,6 +1045,7 @@ class RoleRequestPanelView(View):
         super().__init__(timeout=None)
         self.guild = guild
 
+        # Add RoleSelect dropdown
         role_select = RoleSelect()
         self.add_item(role_select)
 
