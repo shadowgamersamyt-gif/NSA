@@ -1589,7 +1589,11 @@ async def setup_role_request(
     embed.add_field(name="Probationary Private", value=probationary_private_role.mention, inline=False)
     embed.add_field(name="Private", value=private_role.mention, inline=False)
     embed.add_field(name="Private Agent", value=private_agent_role.mention, inline=False)
-    embed.add_field(name="Next Step", value="Use `/createrolepanel` to post the role request panel", inline=False)
+    embed.add_field(
+        name="Next Step", 
+        value="Use `/createrolepanel` to post the role request panel. Members will then select a role and tag their training officer in the channel.",
+        inline=False
+    )
     
     await interaction.response.send_message(embed=embed)
 
