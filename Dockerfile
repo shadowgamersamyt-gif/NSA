@@ -3,7 +3,6 @@ FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
 
 # Set working directory
 WORKDIR /app
@@ -22,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of your project files
 COPY . .
 
-# Expose port for Fly.io
+# Expose the port so Fly can route HTTP traffic
 EXPOSE 8080
 
 # Run your bot
