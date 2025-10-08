@@ -1115,89 +1115,80 @@ async def on_reaction_remove(reaction, user):
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author.bot or not message.guild:
         return
 
-    if not message.guild:
-        return
-
-    # --- STEP 1: Handling tag of training officer ---
+    # --- 1️⃣ Check if the message is a tag for the training officer ---
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Check for pending request waiting for training officer tag
+    # Get the latest role request awaiting officer tag
     cur.execute('''
         SELECT * FROM role_requests 
-        WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_training_officer_tag'
+        WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_officer_tag'
         ORDER BY requested_at DESC
         LIMIT 1
     ''', (message.guild.id, message.author.id))
+    pending_request = cur.fetchone()
 
-    pending_tag_request = cur.fetchone()
     cur.close()
     conn.close()
 
-    if pending_tag_request:
+    # Step 1: Training officer tagging
+    if pending_request:
+        # Ensure at least one user is mentioned
         if message.mentions:
-            # Get the first mentioned user as training officer
-            training_officer = message.mentions[0]
-
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('''
-                UPDATE role_requests
-                SET training_officer_id = %s, status = 'awaiting_screenshot'
-                WHERE id = %s
-            ''', (training_officer.id, pending_tag_request['id']))
-            conn.commit()
-            cur.close()
-            conn.close()
-
             try:
                 await message.add_reaction('✅')
                 await message.delete()
-            except:
-                pass
+                
+                # Update request status to awaiting screenshot
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute('''
+                    UPDATE role_requests
+                    SET training_officer_id = %s, status = 'awaiting_screenshot'
+                    WHERE id = %s
+                ''', (message.mentions[0].id, pending_request['id']))
+                conn.commit()
+                cur.close()
+                conn.close()
 
-            # Send bold, ephemeral-like instruction message
-            try:
-                instruction = await message.channel.send(
-                    f"**📸 Please upload your screenshot for the requested role now!**"
+                # Send ephemeral instructions
+                await message.channel.send(
+                    f'✅ Training officer noted: {message.mentions[0].mention}\n'
+                    '**Next Step:** Please upload your **screenshot** as an image in this channel.',
+                    delete_after=15
                 )
-                await instruction.delete(delay=10)  # disappears after 10 seconds
-            except:
-                pass
+            except Exception as e:
+                print(f'Error processing officer tag: {e}')
+                await message.add_reaction('❌')
         else:
-            # No mention included, ask user to tag training officer
-            try:
-                warning = await message.channel.send(
-                    f"❌ **Please tag your training officer in this message!**"
-                )
-                await warning.delete(delay=10)
-            except:
-                pass
-        return  # exit after handling tag message
+            await message.add_reaction('❌')
+            await message.channel.send(
+                '**❌ Please tag your training officer in the message!**',
+                delete_after=15
+            )
+        return  # Stop here if this was an officer tag message
 
-    # --- STEP 2: Handling screenshot uploads ---
+    # --- 2️⃣ Check if the message is a screenshot for a pending request ---
     if not message.attachments:
         return
 
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Check for pending request waiting for screenshot
     cur.execute('''
         SELECT * FROM role_requests 
         WHERE guild_id = %s AND user_id = %s AND status = 'awaiting_screenshot'
         ORDER BY requested_at DESC
         LIMIT 1
     ''', (message.guild.id, message.author.id))
-
-    pending_screenshot_request = cur.fetchone()
+    screenshot_request = cur.fetchone()
     cur.close()
     conn.close()
 
-    if pending_screenshot_request:
+    if screenshot_request:
         image_attachment = None
         for attachment in message.attachments:
             if attachment.content_type and attachment.content_type.startswith('image/'):
@@ -1207,32 +1198,29 @@ async def on_message(message):
         if image_attachment:
             try:
                 await message.add_reaction('✅')
-                await process_role_request_screenshot(pending_screenshot_request['id'], image_attachment.url, message.guild)
                 await message.delete()
+                await process_role_request_screenshot(screenshot_request['id'], image_attachment.url, message.guild)
 
                 try:
                     await message.author.send(
-                        f'✅ Your role request has been submitted for review!\n\n'
-                        f'**Requested Role:** {pending_screenshot_request["requested_role"]}\n'
-                        f'**Training Officer:** <@{pending_screenshot_request["training_officer_id"]}>\n\n'
-                        f'You will be notified when your request is reviewed.'
+                        f'✅ Your role request for **{screenshot_request["requested_role"]}** has been submitted for review!\n\n'
+                        f'**Training Officer:** <@{screenshot_request["training_officer_id"]}>\n'
+                        f'You will be notified once your request is reviewed.'
                     )
                 except:
-                    # fallback in-channel confirmation
-                    confirm = await message.channel.send(
-                        f'{message.author.mention} ✅ Your role request has been submitted for review!'
+                    await message.channel.send(
+                        f'{message.author.mention} ✅ Your role request has been submitted for review!',
+                        delete_after=10
                     )
-                    await confirm.delete(delay=10)
             except Exception as e:
                 print(f'Error processing screenshot: {e}')
                 await message.add_reaction('❌')
         else:
             await message.add_reaction('❌')
-            try:
-                warning = await message.channel.send('❌ Please upload an image file (PNG, JPG, etc.) for your role request screenshot.')
-                await warning.delete(delay=10)
-            except:
-                pass
+            await message.channel.send(
+                '❌ Please upload an image file (PNG, JPG, etc.) for your role request screenshot.',
+                delete_after=10
+            )
 
 @bot.event
 async def on_member_join(member):
