@@ -1010,8 +1010,32 @@ class RoleSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         self.selected_value = self.values[0]
+
+        # Insert into DB with awaiting_officer status
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute(
+            '''
+            INSERT INTO role_requests (guild_id, user_id, requested_role, status)
+            VALUES (%s, %s, %s, 'awaiting_officer')
+            ON CONFLICT (guild_id, user_id) DO UPDATE
+            SET requested_role = EXCLUDED.requested_role,
+                status = 'awaiting_officer',
+                requested_at = NOW()
+            RETURNING id
+            ''',
+            (interaction.guild.id, interaction.user.id, self.selected_value)
+        )
+        request_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+
         await interaction.response.send_message(
-            f'✅ Selected: **{self.selected_value}**. Now tag your training officer in this channel.',
+            f"✅ You selected **{self.selected_value}**.\n\n"
+            f"👉 **Next Step:** Tag your training officer in this channel.\n\n"
+            f"(Once tagged, the bot will react ✅ and then delete your message.)",
             ephemeral=True
         )
 
