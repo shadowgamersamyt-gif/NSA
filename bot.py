@@ -802,24 +802,50 @@ async def check_admin_permission(interaction: discord.Interaction) -> bool:
     
     return False
 
-async def process_role_request_screenshot(request_id: int, screenshot_url: str, guild):
+async def process_role_request_screenshot(request_id: int, screenshot_url: str, guild: discord.Guild):
     """Process a role request with screenshot and send to review channel"""
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
+    # Update the request to mark it as pending with the screenshot
     cur.execute('''
         UPDATE role_requests 
         SET screenshot_url = %s, status = 'pending'
         WHERE id = %s
+        RETURNING *
     ''', (screenshot_url, request_id))
-    
-    cur.execute('SELECT * FROM role_requests WHERE id = %s', (request_id,))
     request = cur.fetchone()
     
+    # Get config (review channel etc.)
     cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (guild.id,))
     config = cur.fetchone()
     
     conn.commit()
+    cur.close()
+    conn.close()
+
+    if not request or not config or not config['review_channel_id']:
+        return
+    
+    review_channel = guild.get_channel(config['review_channel_id'])
+    if not review_channel:
+        return
+
+    # Build embed for staff review
+    embed = discord.Embed(
+        title="📥 New Role Request Submitted",
+        color=discord.Color.blue(),
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="User", value=f"<@{request['user_id']}>", inline=True)
+    embed.add_field(name="Requested Role", value=request['requested_role'], inline=True)
+    embed.add_field(name="Training Officer", value=f"<@{request['training_officer_id']}>", inline=False)
+    embed.set_image(url=screenshot_url)
+    embed.set_footer(text=f"Request ID: {request['id']}")
+
+    # Send with approve/deny buttons
+    view = RoleRequestReviewView(request['id'])  # assumes you already have this view class
+    await review_channel.send(embed=embed, view=view)
     
     if config and config['review_channel_id'] and request:
         review_channel = guild.get_channel(config['review_channel_id'])
