@@ -567,6 +567,14 @@ def init_db():
         )
     ''')
     
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS autoroles (
+            guild_id BIGINT,
+            role_id BIGINT,
+            PRIMARY KEY (guild_id, role_id)
+        )
+    ''')
+    
     conn.commit()
     cur.close()
     conn.close()

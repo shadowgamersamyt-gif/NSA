@@ -2,3 +2,7 @@ discord.py>=2.3.2
 psycopg2-binary>=2.9.9
 python-dateutil
 Flask>=2.3
+discord.py
+Flask
+psycopg2-binary
+python-dateutil
