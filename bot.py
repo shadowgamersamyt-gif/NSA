@@ -812,67 +812,55 @@ async def process_role_request_screenshot(request_id: int, screenshot_url: str, 
         UPDATE role_requests 
         SET screenshot_url = %s, status = 'pending'
         WHERE id = %s
-        RETURNING *
     ''', (screenshot_url, request_id))
+    
+    # Refetch the request to get the complete data including training_officer_id
+    cur.execute('SELECT * FROM role_requests WHERE id = %s', (request_id,))
     request = cur.fetchone()
     
     # Get config (review channel etc.)
     cur.execute('SELECT * FROM role_request_config WHERE guild_id = %s', (guild.id,))
     config = cur.fetchone()
-    
-    conn.commit()
-    cur.close()
-    conn.close()
 
     if not request or not config or not config['review_channel_id']:
+        conn.commit()
+        cur.close()
+        conn.close()
         return
     
     review_channel = guild.get_channel(config['review_channel_id'])
     if not review_channel:
+        conn.commit()
+        cur.close()
+        conn.close()
         return
 
     # Build embed for staff review
+    member = guild.get_member(request['user_id'])
     embed = discord.Embed(
-        title="📥 New Role Request Submitted",
+        title="🎭 New Role Request",
+        description=f"{member.mention if member else 'Unknown User'} has requested a role!",
         color=discord.Color.blue(),
         timestamp=datetime.now()
     )
-    embed.add_field(name="User", value=f"<@{request['user_id']}>", inline=True)
     embed.add_field(name="Requested Role", value=request['requested_role'], inline=True)
-    embed.add_field(name="Training Officer", value=f"<@{request['training_officer_id']}>", inline=False)
+    embed.add_field(name="Training Officer", value=f"<@{request['training_officer_id']}>", inline=True)
+    embed.add_field(name="User", value=f"{member.mention if member else 'Unknown'} ({request['user_id']})", inline=False)
     embed.set_image(url=screenshot_url)
-    embed.set_footer(text=f"Request ID: {request['id']}")
-
+    embed.set_footer(text=f"Request ID: {request_id}")
+    
     # Send with approve/deny buttons
-    view = RoleRequestReviewView(request['id'])  # assumes you already have this view class
-    await review_channel.send(embed=embed, view=view)
+    view = RoleRequestReviewView(request_id)
+    review_message = await review_channel.send(embed=embed, view=view)
     
-    if config and config['review_channel_id'] and request:
-        review_channel = guild.get_channel(config['review_channel_id'])
-        if review_channel:
-            member = guild.get_member(request['user_id'])
-            embed = discord.Embed(
-                title="🎭 New Role Request",
-                description=f"{member.mention if member else 'Unknown User'} has requested a role!",
-                color=discord.Color.blue(),
-                timestamp=datetime.now()
-            )
-            embed.add_field(name="Requested Role", value=request['requested_role'], inline=True)
-            embed.add_field(name="Training Officer", value=f"<@{request['training_officer_id']}>", inline=True)
-            embed.add_field(name="User", value=f"{member.mention if member else 'Unknown'} ({request['user_id']})", inline=False)
-            embed.set_image(url=screenshot_url)
-            embed.set_footer(text=f"Request ID: {request_id}")
-            
-            view = RoleRequestReviewView(request_id)
-            review_message = await review_channel.send(embed=embed, view=view)
-            
-            cur.execute('''
-                UPDATE role_requests 
-                SET review_message_id = %s 
-                WHERE id = %s
-            ''', (review_message.id, request_id))
-            conn.commit()
+    # Update the request with the review message ID
+    cur.execute('''
+        UPDATE role_requests 
+        SET review_message_id = %s 
+        WHERE id = %s
+    ''', (review_message.id, request_id))
     
+    conn.commit()
     cur.close()
     conn.close()
 
@@ -1235,11 +1223,19 @@ async def on_message(message):
                     )
                     await message.delete()
 
+                    # Refetch the request to get the updated training_officer_id
+                    conn = get_db()
+                    cur = conn.cursor(cursor_factory=RealDictCursor)
+                    cur.execute('SELECT * FROM role_requests WHERE id = %s', (pending_request["id"],))
+                    updated_request = cur.fetchone()
+                    cur.close()
+                    conn.close()
+
                     try:
                         await message.author.send(
                             f"✅ Your role request has been submitted for review!\n\n"
-                            f"**Requested Role:** {pending_request['requested_role']}\n"
-                            f"**Training Officer:** <@{pending_request['training_officer_id']}>\n\n"
+                            f"**Requested Role:** {updated_request['requested_role']}\n"
+                            f"**Training Officer:** <@{updated_request['training_officer_id']}>\n\n"
                             f"You will be notified when your request is reviewed."
                         )
                     except:
@@ -4044,8 +4040,8 @@ async def commands_list(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-token = os.getenv('DISCORD_BOT_TOKEN')
+token = os.getenv('BOT_TOKEN')
 if token:
     bot.run(token)
 else:
-    print('ERROR: DISCORD_BOT_TOKEN not found in environment variables!')
+    print('ERROR: BOT_TOKEN not found in environment variables!')

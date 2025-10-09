@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -19,8 +22,23 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+.pythonlibs/
+
+# Flask
+instance/
+.webassets-cache
+
+# Environment
 .env
-venv/
-ENV/
-env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
