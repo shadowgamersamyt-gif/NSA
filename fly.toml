@@ -1,4 +1,4 @@
-app = 'nsa-discord-bot'
+app = 'nsa'
 primary_region = 'dfw'
 
 [build]
